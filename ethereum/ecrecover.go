@@ -36,13 +36,13 @@ func allZero(b []byte) bool {
 	return true
 }
 
+const ecRecoverInputLength = 128
+
 // PrecompiledEcRecover is implemented following the precompiles implementation
 // and thus guarantee to always return the same output as
 //
 // https://github.com/ethereum/go-ethereum/blob/52f2461774bcb8cdd310f86b4bc501df5b783852/core/vm/contracts.go#L78
 func PrecompiledEcRecover(input []byte) ([]byte, error) {
-	const ecRecoverInputLength = 128
-
 	input = common.RightPadBytes(input, ecRecoverInputLength)
 	// "input" is (hash, v, r, s), each 32 bytes
 	// but for ecrecover we want (r, s, v)
@@ -64,4 +64,30 @@ func PrecompiledEcRecover(input []byte) ([]byte, error) {
 
 	// the first byte of pubkey is bitcoin heritage
 	return common.LeftPadBytes(crypto.Keccak256(pubKey[1:])[12:], 32), nil
+}
+
+// EcRecover an Ethereum secp256k1 ECDSA signature, by casting the inputs as a precompile request argument
+// then returns the recovered ethereum address.
+// Hash is a 32 bytes slices
+// VRS is a 65 bytes slice.
+//
+// It can be used to verify that a go implementation of ethereum signature and formatting complies with 
+// ecrecover standard through unit-tests
+func EcRecover(Hash common.Hash, VRS []byte) (common.Address, error) {
+	// All values are initialized to zero
+	input := make([]byte, 128)
+	// Copying the V element signature
+	input[63] = VRS[0]
+	// Copying the Hash value
+	copy(input[:32], Hash[:32])
+	// Copying the R and S elements of the signature
+	copy(input[64:128], VRS[1:65])
+	
+	output, err := PrecompiledEcRecover(input)
+	if err != nil {
+		return common.Address{}, err
+	}
+
+	// Extract the address from the returned slice
+	return common.BytesToAddress(output[12:32]), nil
 }
